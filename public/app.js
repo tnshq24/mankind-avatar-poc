@@ -1,9 +1,6 @@
 // Azure Speech SDK for Avatar Realtime (loaded globally via index.html)
 const SpeechSDK = window.SpeechSDK;
 
-// Azure Speech SDK for Avatar Realtime (loaded globally via index.html)
-const SpeechSDK = window.SpeechSDK;
-
 let speechConfig = null;
 let avatarSynthesizer = null;
 let peerConnection = null;
