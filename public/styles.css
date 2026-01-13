@@ -114,6 +114,8 @@ h1 {
 .chat-input-container {
   display: flex;
   gap: 10px;
+  position: relative; /* Ensure z-index works */
+  z-index: 10; /* Bring input to front */
 }
 
 #user-input {
