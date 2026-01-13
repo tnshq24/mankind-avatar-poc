@@ -1,32 +1,32 @@
-# Chatbot Avatar Demo với Azure Services
+# Chatbot Avatar Demo with Azure Services
 
-Demo chatbot với avatar realtime sử dụng Azure OpenAI và Azure Speech Service.
+A real-time chatbot demo using Azure OpenAI and Azure Speech Service.
 
-## Tính năng
+## Features
 
-- 💬 Chatbot với Azure OpenAI
-- 🎭 Avatar realtime với Azure Speech Service
-- 🎨 UI tối giản và hiện đại
-- ⚡ Phản hồi realtime
+- 💬 Chatbot with Azure OpenAI
+- 🎭 Real-time avatar with Azure Speech Service
+- 🎨 Minimalistic and modern UI
+- ⚡ Real-time responses
 - 🔁 WebRTC streaming với Azure Avatar Synthesizer ([docs](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/text-to-speech-avatar/real-time-synthesis-avatar))
 
-## Yêu cầu
+## Requirements
 
 - Node.js 18+ 
 - Azure OpenAI account
 - Azure Speech Service account
 
-## Cài đặt
+## Installation
 
-1. **Clone repository và cài đặt dependencies:**
+1. **Clone the repository and install dependencies:**
 
 ```bash
 npm install
 ```
 
-2. **Cấu hình Azure credentials:**
+2. **Configure Azure credentials:**
 
-Mở file `.env` và thêm các thông tin sau:
+Open the `.env` file and add the following information:
 
 ```env
 # Azure OpenAI Configuration
@@ -47,21 +47,21 @@ AZURE_SPEECH_ENDPOINT=
 PORT=3000
 ```
 
-## Chạy ứng dụng
+## Running the Application
 
 ```bash
 npm run dev
 ```
 
-Hoặc:
+Or:
 
 ```bash
 npm start
 ```
 
-Mở trình duyệt và truy cập: `http://localhost:3000`
+Open your browser and navigate to: `http://localhost:3000`
 
-## Cấu trúc dự án
+## Project Structure
 
 ```
 .
@@ -69,7 +69,7 @@ Mở trình duyệt và truy cập: `http://localhost:3000`
 │   ├── index.js              # Express server
 │   ├── routes/
 │   │   ├── chat.js          # Chat API route
-│   │   └── speech.js        # Speech token route
+│   │   └── speech.js        # Speech token + ICE relay endpoints
 │   └── services/
 │       ├── openai.js        # Azure OpenAI service
 │       └── speech.js        # Azure Speech service
@@ -82,36 +82,36 @@ Mở trình duyệt và truy cập: `http://localhost:3000`
 └── README.md               # Documentation
 ```
 
-## SDK được sử dụng
+## SDKs Used
 
 1. **Azure OpenAI SDK** (`@azure/openai`)
-   - Để kết nối với Azure OpenAI cho chatbot responses
+   - For connecting to Azure OpenAI for chatbot responses
    - Documentation: https://learn.microsoft.com/en-us/azure/ai-services/openai/reference
    - NPM: https://www.npmjs.com/package/@azure/openai
 
 2. **Azure Speech SDK** (`microsoft-cognitiveservices-speech-sdk`)
-   - Để tạo avatar realtime và text-to-speech
+   - For real-time avatar synthesis and text-to-speech
    - Documentation: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/text-to-speech-avatar/real-time-synthesis-avatar
    - NPM: https://www.npmjs.com/package/microsoft-cognitiveservices-speech-sdk
 
-## Realtime avatar luồng hoạt động
+## Real-time Avatar Workflow
 
-1. Frontend gọi `/api/speech/token` để lấy Speech key/region và `/api/speech/ice-token` để lấy ICE relay từ Azure.
-2. Browser tạo `RTCPeerConnection` với ICE servers từ Azure và khởi tạo `SpeechSDK.AvatarSynthesizer`.
-3. Bất cứ khi nào chatbot trả lời, client gọi `avatarSynthesizer.speakTextAsync()` để stream video + audio avatar realtime (tham khảo [How to use text to speech avatar with real-time synthesis](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/text-to-speech-avatar/real-time-synthesis-avatar)).
+1. The frontend calls `/api/speech/token` to get the Speech key/region and `/api/speech/ice-token` to retrieve ICE relay information from Azure.
+2. The browser creates an `RTCPeerConnection` with the ICE servers from Azure and initializes the `SpeechSDK.AvatarSynthesizer`.
+3. Whenever the chatbot responds, the client calls `avatarSynthesizer.speakTextAsync()` to stream real-time avatar video + audio (refer to [How to use text to speech avatar with real-time synthesis](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/text-to-speech-avatar/real-time-synthesis-avatar)).
 
-## Lưu ý
+## Notes
 
-- Avatar realtime đầy đủ yêu cầu Azure Avatar API endpoint và WebRTC setup
-- Code hiện tại bao gồm text-to-speech như một fallback
-- Để sử dụng avatar video đầy đủ, bạn cần cấu hình Azure Avatar API endpoint trong `public/app.js`
-- Endpoint `/api/speech/ice-token` sẽ proxy request lấy ICE server thông qua Azure Speech Service; đảm bảo region bạn chọn hỗ trợ Text to Speech Avatar realtime
+- Full real-time avatar requires Azure Avatar API endpoint and WebRTC setup.
+- The current code includes text-to-speech as a fallback.
+- To use full avatar video, you need to configure the Azure Avatar API endpoint in `public/app.js`.
+- The `/api/speech/ice-token` endpoint proxies the request to get ICE servers via Azure Speech Service; ensure your selected region supports Text to Speech Avatar real-time synthesis.
 
 ## Troubleshooting
 
-- Đảm bảo các keys trong `.env` đã được cấu hình đúng
-- Kiểm tra Azure Speech Service region có khả dụng không
-- Xem console log để debug các lỗi kết nối
+- Ensure that the keys in `.env` are correctly configured.
+- Check if your Azure Speech Service region is available.
+- Check the console log to debug connection errors.
 
 ## License
 
