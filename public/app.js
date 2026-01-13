@@ -1,10 +1,15 @@
 // Azure Speech SDK for Avatar Realtime (loaded globally via index.html)
 const SpeechSDK = window.SpeechSDK;
 
+// Azure Speech SDK for Avatar Realtime (loaded globally via index.html)
+const SpeechSDK = window.SpeechSDK;
+
 let speechConfig = null;
 let avatarSynthesizer = null;
 let peerConnection = null;
 let avatarReady = false;
+let reconnectTimeoutId = null;
+const RECONNECT_DELAY_MS = 5000; // 5 seconds delay before trying to reconnect
 
 const videoElement = document.getElementById('avatar-video');
 const placeholder = document.getElementById('avatar-placeholder');
@@ -59,27 +64,49 @@ function normalizeIceServers(iceData) {
   ];
 }
 
-// Setup Azure Speech Service and Avatar Synthesizer
-async function setupSpeechService() {
-  try {
-    const { key, region } = await fetchJson('/api/speech/token');
+// --- Avatar Connection Management --- //
 
-    if (!key || !region) {
-      throw new Error('Cannot get credentials from server');
-    }
-
-    speechConfig = SpeechSDK.SpeechConfig.fromSubscription(key, region);
-    speechConfig.speechSynthesisVoiceName = 'hi-IN-ArjunNeural';
-
-    await setupAvatarConnection();
-    updateStatus('Avatar connection ready');
-  } catch (error) {
-    console.error('Speech service setup error:', error);
-    throw error;
+function closeAvatarConnections() {
+  if (avatarSynthesizer) {
+    avatarSynthesizer.close();
+    avatarSynthesizer = null;
   }
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+  }
+  avatarReady = false;
+  if (reconnectTimeoutId) {
+    clearTimeout(reconnectTimeoutId);
+    reconnectTimeoutId = null;
+  }
+  videoElement.srcObject = null;
+  videoElement.classList.remove('active');
+  placeholder.style.display = 'flex'; // Show placeholder
+}
+
+async function reconnectAvatarConnection() {
+  if (reconnectTimeoutId) {
+    clearTimeout(reconnectTimeoutId);
+  }
+  closeAvatarConnections();
+  updateStatus('Avatar disconnected. Reconnecting...');
+  reconnectTimeoutId = setTimeout(async () => {
+    try {
+      await setupAvatarConnection();
+      updateStatus('Avatar reconnected. Ready!');
+    } catch (error) {
+      console.error('Avatar reconnection failed:', error);
+      updateStatus('Avatar reconnection failed. Will retry.');
+      reconnectAvatarConnection(); // Recursive retry
+    }
+  }, RECONNECT_DELAY_MS);
 }
 
 async function setupAvatarConnection() {
+  closeAvatarConnections(); // Ensure previous connections are closed
+  updateStatus('Establishing avatar connection...');
+
   const iceData = await fetchJson('/api/speech/ice-token');
   const iceServers = normalizeIceServers(iceData);
   if (!iceServers.length) {
@@ -87,6 +114,19 @@ async function setupAvatarConnection() {
   }
 
   peerConnection = new RTCPeerConnection({ iceServers });
+
+  peerConnection.onconnectionstatechange = () => {
+    console.log('PeerConnection state changed:', peerConnection.connectionState);
+    if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
+      reconnectAvatarConnection();
+    }
+  };
+  peerConnection.oniceconnectionstatechange = () => {
+    console.log('ICE connection state changed:', peerConnection.iceConnectionState);
+    if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
+      reconnectAvatarConnection();
+    }
+  };
 
   peerConnection.ontrack = (event) => {
     if (event.track.kind === 'video' && event.streams[0]) {
@@ -113,8 +153,40 @@ async function setupAvatarConnection() {
   avatarConfig.backgroundColor = '#FFFFFFFF';
 
   avatarSynthesizer = new SpeechSDK.AvatarSynthesizer(speechConfig, avatarConfig);
+  avatarSynthesizer.canceled = (s, e) => {
+    console.error('Avatar synthesis canceled:', e.errorDetails);
+    if (e.reason === SpeechSDK.CancellationReason.Error) {
+      reconnectAvatarConnection();
+    }
+  };
+
   await avatarSynthesizer.startAvatarAsync(peerConnection);
   avatarReady = true;
+}
+
+// Setup Azure Speech Service (initial connection or re-initialization of speech config)
+async function setupSpeechService() {
+  try {
+    const { key, region } = await fetchJson('/api/speech/token');
+
+    if (!key || !region) {
+      throw new Error('Cannot get credentials from server');
+    }
+
+    // Only create SpeechConfig once or if it needs to be updated
+    if (!speechConfig || speechConfig.subscriptionKey !== key || speechConfig.region !== region) {
+      speechConfig = SpeechSDK.SpeechConfig.fromSubscription(key, region);
+      speechConfig.speechSynthesisVoiceName = 'hi-IN-ArjunNeural';
+    }
+
+    if (!avatarReady) {
+      await setupAvatarConnection();
+      updateStatus('Avatar connection ready');
+    }
+  } catch (error) {
+    console.error('Speech service setup error:', error);
+    throw error;
+  }
 }
 
 function speakWithAvatar(text) {
