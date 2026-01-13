@@ -1,0 +1,32 @@
+{
+  "name": "mankind-avatar-demo",
+  "version": "1.0.0",
+  "description": "Chatbot demo with realtime avatar using Azure OpenAI and Azure Speech Service",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch server/index.js",
+    "start": "node server/index.js",
+    "build": "echo 'No build step required for this demo'"
+  },
+  "keywords": [
+    "chatbot",
+    "avatar",
+    "azure",
+    "openai",
+    "speech"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@azure/openai": "^1.0.0-beta.9",
+    "microsoft-cognitiveservices-speech-sdk": "^1.40.0",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

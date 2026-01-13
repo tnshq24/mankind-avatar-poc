@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatbot Avatar Demo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Chatbot with Realtime Avatar</h1>
+    
+    <div class="chat-container">
+      <div class="avatar-section">
+        <div id="avatar-container" class="avatar-container">
+          <video id="avatar-video" autoplay playsinline></video>
+          <div id="avatar-placeholder" class="avatar-placeholder">
+            <p>Avatar will appear here</p>
+          </div>
+          <audio id="avatar-audio" autoplay hidden></audio>
+        </div>
+      </div>
+      
+      <div class="chat-section">
+        <div id="chat-messages" class="chat-messages"></div>
+        
+        <div class="chat-input-container">
+          <input 
+            type="text" 
+            id="user-input" 
+            placeholder="Type your question..."
+            autocomplete="off"
+          />
+          <button id="send-button">Send</button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="status" class="status"></div>
+  </div>
+
+  <script src="https://unpkg.com/microsoft-cognitiveservices-speech-sdk/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
