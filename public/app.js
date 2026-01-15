@@ -30,8 +30,8 @@ const videoElement = document.getElementById("avatar-video");
 const placeholder = document.getElementById("avatar-placeholder");
 
 const chatContainer = document.getElementById("chat-container"); // optional wrapper
-const userInput = document.getElementById("user-input");
-const sendButton = document.getElementById("send-button");
+const micButton = document.getElementById("mic-button");
+const speechTranscript = document.getElementById("speech-transcript");
 
 // ---------- Autoplay safety (required) ----------
 if (videoElement) {
@@ -63,9 +63,11 @@ window.addEventListener("keydown", unlockAudioOnce, { once: true });
 let speechConfig = null;
 let avatarSynthesizer = null;
 let peerConnection = null;
+let speechRecognizer = null;
 
 let avatarReady = false;
 let connectPromise = null;
+let listening = false;
 
 let reconnectTimer = null;
 let reconnectAttempt = 0;
@@ -86,8 +88,7 @@ function setChatAvailability(isReady, msg = "") {
     chatContainer.style.opacity = isReady ? "1" : "0.55";
     chatContainer.style.pointerEvents = isReady ? "auto" : "none";
   }
-  if (userInput) userInput.disabled = !isReady;
-  if (sendButton) sendButton.disabled = !isReady;
+  if (micButton) micButton.disabled = !isReady;
 
   updateStatus(msg || (isReady ? "Avatar ready" : "Avatar not ready…"));
 }
@@ -336,6 +337,7 @@ async function setupSpeechConfigFresh() {
   }
 
   speechConfig.speechSynthesisVoiceName = "hi-IN-ArjunNeural";
+  speechConfig.speechRecognitionLanguage = "en-US";
 }
 
 // ---------- Avatar Session ----------
@@ -458,70 +460,161 @@ function addMessage(text, type) {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-function setupChatInterface() {
-  if (!userInput || !sendButton) return;
+function setMicListening(isListening) {
+  listening = isListening;
+  if (!micButton) return;
+  micButton.classList.toggle("listening", isListening);
+  micButton.textContent = isListening ? "Listening..." : "Start speaking";
+}
 
-  const sendMessage = async () => {
+function updateTranscript(text) {
+  if (speechTranscript) {
+    speechTranscript.textContent = text;
+  }
+}
+
+async function stopSpeechRecognition() {
+  if (!speechRecognizer) {
+    setMicListening(false);
+    return;
+  }
+
+  try {
+    await new Promise((resolve) => {
+      speechRecognizer.stopContinuousRecognitionAsync(resolve, resolve);
+    });
+  } catch {}
+
+  try {
+    speechRecognizer.close();
+  } catch {}
+  speechRecognizer = null;
+  setMicListening(false);
+}
+
+async function processUserMessage(message) {
+  addMessage(message, "user");
+  updateStatus("Working...");
+
+  try {
+    const resp = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message })
+    });
+
+    const data = await resp.json();
+    if (data?.error) throw new Error(data.error);
+
+    addMessage(data.response, "bot");
+    updateStatus("Avatar speaking...");
+
+    await new Promise((resolve, reject) => {
+      avatarSynthesizer.speakTextAsync(
+        data.response,
+        (result) => {
+          if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) resolve();
+          else reject(new Error("Avatar speakTextAsync did not complete"));
+        },
+        (err) => reject(err)
+      );
+    });
+
+    unlockAudioOnce();
+    updateStatus("Ready");
+  } catch (e) {
+    console.error("Chat error:", e);
+    updateStatus(`Error: ${e.message || e}`);
+    if (!avatarReady) scheduleReconnect("chat-error");
+  }
+}
+
+function setupVoiceInterface() {
+  if (!micButton) return;
+
+  const startListening = async () => {
     if (!avatarReady) {
       updateStatus("Avatar not ready. Please wait…");
       return;
     }
-
-    const message = userInput.value.trim();
-    if (!message) return;
-
-    addMessage(message, "user");
-    userInput.value = "";
-    updateStatus("Working...");
+    if (listening) return;
 
     try {
-      const resp = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message })
-      });
+      if (!speechConfig) {
+        await setupSpeechConfigFresh();
+      }
 
-      const data = await resp.json();
-      if (data?.error) throw new Error(data.error);
+      updateTranscript("Listening...");
+      setMicListening(true);
+      updateStatus("Listening...");
 
-      addMessage(data.response, "bot");
-      updateStatus("Avatar speaking...");
+      const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+      speechRecognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
 
-      await new Promise((resolve, reject) => {
-        avatarSynthesizer.speakTextAsync(
-          data.response,
-          (result) => {
-            if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) resolve();
-            else reject(new Error("Avatar speakTextAsync did not complete"));
-          },
-          (err) => reject(err)
-        );
-      });
+      let handled = false;
 
-      // ensure audio is unlocked once user starts interacting with chat
-      unlockAudioOnce();
+      speechRecognizer.recognizing = (s, e) => {
+        if (e.result?.text) {
+          updateTranscript(e.result.text);
+        }
+      };
 
-      updateStatus("Ready");
+      speechRecognizer.recognized = async (s, e) => {
+        if (handled) return;
+
+        if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
+          const text = (e.result.text || "").trim();
+          handled = true;
+          await stopSpeechRecognition();
+
+          if (text) {
+            updateTranscript(text);
+            await processUserMessage(text);
+          } else {
+            updateTranscript("No speech detected. Tap to try again.");
+            updateStatus("No speech detected");
+          }
+          return;
+        }
+
+        if (e.result.reason === SpeechSDK.ResultReason.NoMatch) {
+          handled = true;
+          await stopSpeechRecognition();
+          updateTranscript("No speech detected. Tap to try again.");
+          updateStatus("No speech detected");
+        }
+      };
+
+      speechRecognizer.canceled = async (s, e) => {
+        console.error("Speech recognition canceled:", e);
+        await stopSpeechRecognition();
+        updateTranscript("Speech recognition canceled. Tap to try again.");
+        updateStatus("Speech recognition canceled");
+      };
+
+      speechRecognizer.sessionStopped = async () => {
+        if (listening) {
+          await stopSpeechRecognition();
+        }
+      };
+
+      speechRecognizer.startContinuousRecognitionAsync();
     } catch (e) {
-      console.error("Chat error:", e);
-      updateStatus(`Error: ${e.message || e}`);
-      if (!avatarReady) scheduleReconnect("chat-error");
-    } finally {
-      userInput.focus();
+      console.error("Speech recognition error:", e);
+      await stopSpeechRecognition();
+      updateTranscript("Microphone error. Check permissions and try again.");
+      updateStatus(`Mic error: ${e.message || e}`);
     }
   };
 
-  sendButton.addEventListener("click", sendMessage);
-  userInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") sendMessage();
-  });
+  micButton.addEventListener("click", startListening);
 }
 
 // ---------- Init ----------
 async function init() {
   try {
     ensureSdkLoaded();
-    setupChatInterface();
+    setupVoiceInterface();
     setChatAvailability(false, "Initializing avatar...");
     setTimeout(() => {
       startNewAvatarSession("page-load");
@@ -536,5 +629,6 @@ async function init() {
 init();
 
 window.addEventListener("beforeunload", () => {
+  try { stopSpeechRecognition(); } catch {}
   try { closeSession(); } catch {}
 });

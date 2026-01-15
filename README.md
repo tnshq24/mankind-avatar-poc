@@ -5,6 +5,7 @@ A real-time chatbot demo using Azure OpenAI and Azure Speech Service.
 ## Features
 
 - 💬 Chatbot with Azure OpenAI
+- 🎙️ Speech-to-speech interaction (microphone input + avatar output)
 - 🎭 Real-time avatar with Azure Speech Service
 - 🎨 Minimalistic and modern UI
 - ⚡ Real-time responses
@@ -90,7 +91,7 @@ Open your browser and navigate to: `http://localhost:3000`
    - NPM: https://www.npmjs.com/package/@azure/openai
 
 2. **Azure Speech SDK** (`microsoft-cognitiveservices-speech-sdk`)
-   - For real-time avatar synthesis and text-to-speech
+   - For real-time avatar synthesis and speech recognition
    - Documentation: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/text-to-speech-avatar/real-time-synthesis-avatar
    - NPM: https://www.npmjs.com/package/microsoft-cognitiveservices-speech-sdk
 
@@ -98,12 +99,13 @@ Open your browser and navigate to: `http://localhost:3000`
 
 1. The frontend calls `/api/speech/token` to get the Speech key/region and `/api/speech/ice-token` to retrieve ICE relay information from Azure.
 2. The browser creates an `RTCPeerConnection` with the ICE servers from Azure and initializes the `SpeechSDK.AvatarSynthesizer`.
-3. Whenever the chatbot responds, the client calls `avatarSynthesizer.speakTextAsync()` to stream real-time avatar video + audio (refer to [How to use text to speech avatar with real-time synthesis](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/text-to-speech-avatar/real-time-synthesis-avatar)).
+3. Users speak into the microphone; the Speech SDK recognizes the utterance and sends it to `/api/chat`.
+4. Whenever the chatbot responds, the client calls `avatarSynthesizer.speakTextAsync()` to stream real-time avatar video + audio (refer to [How to use text to speech avatar with real-time synthesis](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/text-to-speech-avatar/real-time-synthesis-avatar)).
 
 ## Notes
 
 - Full real-time avatar requires Azure Avatar API endpoint and WebRTC setup.
-- The current code includes text-to-speech as a fallback.
+- The current code expects microphone access for speech input.
 - To use full avatar video, you need to configure the Azure Avatar API endpoint in `public/app.js`.
 - The `/api/speech/ice-token` endpoint proxies the request to get ICE servers via Azure Speech Service; ensure your selected region supports Text to Speech Avatar real-time synthesis.
 
