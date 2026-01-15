@@ -119,6 +119,26 @@ h1 {
   z-index: 10; /* Bring input to front */
 }
 
+.language-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: #333;
+  background: #f2f2f7;
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+
+.language-select select {
+  border: 1px solid #d1d1d6;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 14px;
+  background: white;
+}
+
 .mic-button {
   padding: 14px 20px;
   background: #667eea;

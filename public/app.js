@@ -32,6 +32,7 @@ const placeholder = document.getElementById("avatar-placeholder");
 const chatContainer = document.getElementById("chat-container"); // optional wrapper
 const micButton = document.getElementById("mic-button");
 const speechTranscript = document.getElementById("speech-transcript");
+const languageSelect = document.getElementById("language-select");
 
 // ---------- Autoplay safety (required) ----------
 if (videoElement) {
@@ -68,6 +69,7 @@ let speechRecognizer = null;
 let avatarReady = false;
 let connectPromise = null;
 let listening = false;
+let currentLanguage = "en";
 
 let reconnectTimer = null;
 let reconnectAttempt = 0;
@@ -91,6 +93,13 @@ function setChatAvailability(isReady, msg = "") {
   if (micButton) micButton.disabled = !isReady;
 
   updateStatus(msg || (isReady ? "Avatar ready" : "Avatar not ready…"));
+}
+
+function setLanguageUiCopy(language) {
+  if (!speechTranscript) return;
+  speechTranscript.textContent = language === "hi"
+    ? "बटन दबाएं और अपना प्रश्न बोलें।"
+    : "Tap the button and ask your question aloud.";
 }
 
 // ---------- Fetch (no-cache) ----------
@@ -336,8 +345,13 @@ async function setupSpeechConfigFresh() {
     throw new Error("Invalid /api/speech/token response (expected {token,region} or {key,region}).");
   }
 
-  speechConfig.speechSynthesisVoiceName = "hi-IN-ArjunNeural";
-  speechConfig.speechRecognitionLanguage = "en-US";
+  if (currentLanguage === "hi") {
+    speechConfig.speechSynthesisVoiceName = "hi-IN-ArjunNeural";
+    speechConfig.speechRecognitionLanguage = "hi-IN";
+  } else {
+    speechConfig.speechSynthesisVoiceName = "en-US-JennyNeural";
+    speechConfig.speechRecognitionLanguage = "en-US";
+  }
 }
 
 // ---------- Avatar Session ----------
@@ -473,6 +487,24 @@ function updateTranscript(text) {
   }
 }
 
+function getSpeechUiCopy() {
+  if (currentLanguage === "hi") {
+    return {
+      listening: "सुन रहा है...",
+      noSpeech: "कोई आवाज़ नहीं मिली। फिर से प्रयास करें।",
+      canceled: "स्पीच पहचान रद्द हो गई। फिर से प्रयास करें।",
+      micError: "माइक्रोफोन त्रुटि। अनुमति जांचें और फिर से प्रयास करें।"
+    };
+  }
+
+  return {
+    listening: "Listening...",
+    noSpeech: "No speech detected. Tap to try again.",
+    canceled: "Speech recognition canceled. Tap to try again.",
+    micError: "Microphone error. Check permissions and try again."
+  };
+}
+
 async function stopSpeechRecognition() {
   if (!speechRecognizer) {
     setMicListening(false);
@@ -500,7 +532,7 @@ async function processUserMessage(message) {
     const resp = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message })
+      body: JSON.stringify({ message, language: currentLanguage })
     });
 
     const data = await resp.json();
@@ -544,9 +576,10 @@ function setupVoiceInterface() {
         await setupSpeechConfigFresh();
       }
 
-      updateTranscript("Listening...");
+      const uiCopy = getSpeechUiCopy();
+      updateTranscript(uiCopy.listening);
       setMicListening(true);
-      updateStatus("Listening...");
+      updateStatus(uiCopy.listening);
 
       const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
       speechRecognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
@@ -571,8 +604,8 @@ function setupVoiceInterface() {
             updateTranscript(text);
             await processUserMessage(text);
           } else {
-            updateTranscript("No speech detected. Tap to try again.");
-            updateStatus("No speech detected");
+            updateTranscript(uiCopy.noSpeech);
+            updateStatus(uiCopy.noSpeech);
           }
           return;
         }
@@ -580,16 +613,16 @@ function setupVoiceInterface() {
         if (e.result.reason === SpeechSDK.ResultReason.NoMatch) {
           handled = true;
           await stopSpeechRecognition();
-          updateTranscript("No speech detected. Tap to try again.");
-          updateStatus("No speech detected");
+          updateTranscript(uiCopy.noSpeech);
+          updateStatus(uiCopy.noSpeech);
         }
       };
 
       speechRecognizer.canceled = async (s, e) => {
         console.error("Speech recognition canceled:", e);
         await stopSpeechRecognition();
-        updateTranscript("Speech recognition canceled. Tap to try again.");
-        updateStatus("Speech recognition canceled");
+        updateTranscript(uiCopy.canceled);
+        updateStatus(uiCopy.canceled);
       };
 
       speechRecognizer.sessionStopped = async () => {
@@ -602,7 +635,8 @@ function setupVoiceInterface() {
     } catch (e) {
       console.error("Speech recognition error:", e);
       await stopSpeechRecognition();
-      updateTranscript("Microphone error. Check permissions and try again.");
+      const uiCopy = getSpeechUiCopy();
+      updateTranscript(uiCopy.micError);
       updateStatus(`Mic error: ${e.message || e}`);
     }
   };
@@ -610,10 +644,34 @@ function setupVoiceInterface() {
   micButton.addEventListener("click", startListening);
 }
 
+function setupLanguageSelector() {
+  if (!languageSelect) return;
+
+  const applyLanguage = async (language) => {
+    currentLanguage = language;
+    setLanguageUiCopy(language);
+
+    await stopSpeechRecognition();
+    speechConfig = null;
+    if (avatarReady) {
+      await startNewAvatarSession(`language-${language}`);
+    }
+  };
+
+  currentLanguage = languageSelect.value || "en";
+  setLanguageUiCopy(currentLanguage);
+
+  languageSelect.addEventListener("change", async (event) => {
+    const nextLanguage = event.target.value === "hi" ? "hi" : "en";
+    await applyLanguage(nextLanguage);
+  });
+}
+
 // ---------- Init ----------
 async function init() {
   try {
     ensureSdkLoaded();
+    setupLanguageSelector();
     setupVoiceInterface();
     setChatAvailability(false, "Initializing avatar...");
     setTimeout(() => {
