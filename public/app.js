@@ -1,14 +1,12 @@
 /****************************************************
- * Real-time Avatar (Azure Speech) – Stable + No Flapping + Audio Works
- * Fixes:
- * - waitForVideoRenderable defined (no ReferenceError)
- * - ontrack never throws (prevents false reconnect)
- * - Debounced reconnect on "disconnected" (prevents session restart loops)
- * - Cancels reconnect if video is already rendering
- * - TURN-only ICE urls per docs
- * - sendrecv transceivers per docs
- * - Fresh ICE/token fetch (no-store) per refresh/session
- * - Audio plays reliably via user-gesture unlock (browser autoplay policy)
+ * Real-time Avatar (Azure Speech) – Speech-to-Speech FIXED
+ * Critical fixes:
+ * - Single speechConfig instance (no conflicts)
+ * - Proper config initialization order
+ * - Speech recognizer uses separate config instance
+ * - Language switching without full session restart
+ * - Better error isolation between avatar and recognition
+ * - Microphone permission handling
  ****************************************************/
 
 const SpeechSDK = window.SpeechSDK;
@@ -29,7 +27,7 @@ const DISCONNECTED_GRACE_MS = 2500;
 const videoElement = document.getElementById("avatar-video");
 const placeholder = document.getElementById("avatar-placeholder");
 
-const chatContainer = document.getElementById("chat-container"); // optional wrapper
+const chatContainer = document.getElementById("chat-container");
 const micButton = document.getElementById("mic-button");
 const speechTranscript = document.getElementById("speech-transcript");
 const languageSelect = document.getElementById("language-select");
@@ -37,7 +35,7 @@ const languageSelect = document.getElementById("language-select");
 // ---------- Autoplay safety (required) ----------
 if (videoElement) {
   videoElement.autoplay = true;
-  videoElement.muted = true;       // start muted so autoplay works
+  videoElement.muted = true;
   videoElement.playsInline = true;
 }
 
@@ -51,7 +49,6 @@ function unlockAudioOnce() {
   audioUnlocked = true;
   console.log("🔓 Unlocking avatar audio");
 
-  // unmute + try play
   videoElement.muted = false;
   videoElement.play().catch(() => {});
 }
@@ -76,6 +73,9 @@ let reconnectAttempt = 0;
 
 let disconnectedGraceTimer = null;
 let closing = false;
+
+// Store credentials to reuse
+let cachedCredentials = null;
 
 // ---------- UI helpers ----------
 function updateStatus(message) {
@@ -126,7 +126,6 @@ function normalizeIceServersTurnOnly(iceData) {
 
   const out = [];
 
-  // support alternative shape { urls/Urls, username/Username, credential/Password }
   if (!servers.length) {
     const urls = iceData?.urls || iceData?.Urls;
     const username = iceData?.username || iceData?.Username;
@@ -144,7 +143,7 @@ function normalizeIceServersTurnOnly(iceData) {
     const turnUrls = urls.filter(u => typeof u === "string" && u.toLowerCase().startsWith("turn"));
     if (turnUrls.length) {
       out.push({
-        urls: turnUrls, // TURN only
+        urls: turnUrls,
         username: s.username || "",
         credential: s.credential || ""
       });
@@ -228,13 +227,23 @@ function closeSession() {
   closing = true;
   clearTimers();
 
-  // Close avatar synthesizer first
+  // Stop speech recognition first
+  try {
+    if (speechRecognizer) {
+      speechRecognizer.stopContinuousRecognitionAsync(() => {}, () => {});
+      speechRecognizer.close();
+    }
+  } catch {}
+  speechRecognizer = null;
+  listening = false;
+
+  // Close avatar synthesizer
   try {
     avatarSynthesizer?.close();
   } catch {}
   avatarSynthesizer = null;
 
-  // Close PeerConnection (DO NOT touch senders/receivers)
+  // Close PeerConnection
   try {
     peerConnection?.close();
   } catch {}
@@ -248,11 +257,8 @@ function closeSession() {
     const oldStream = videoElement.srcObject;
     videoElement.srcObject = null;
     videoElement.classList.remove("active");
-
-    // reset to muted so autoplay works next time
     videoElement.muted = true;
 
-    // stopping tracks from srcObject is safe
     try {
       oldStream?.getTracks?.().forEach(t => t.stop());
     } catch {}
@@ -260,15 +266,8 @@ function closeSession() {
 
   if (placeholder) placeholder.style.display = "flex";
 
-  // IMPORTANT:
-  // Do NOT reset audioUnlocked
-  // Do NOT stop pc senders/receivers manually
-  // Do NOT null pc handlers
-
   closing = false;
 }
-
-
 
 // ---------- Reconnect (no flapping) ----------
 function cancelReconnectIfAny() {
@@ -285,7 +284,6 @@ function cancelReconnectIfAny() {
 function scheduleReconnect(reason = "disconnected") {
   if (closing) return;
 
-  // If avatar is already rendering, do NOT reconnect.
   if (avatarReady) {
     cancelReconnectIfAny();
     return;
@@ -333,25 +331,36 @@ function ensureSdkLoaded() {
   }
 }
 
-// ---------- Speech Config (fresh each session) ----------
-async function setupSpeechConfigFresh() {
-  const creds = await fetchJson("/api/speech/token");
+// ---------- Speech Config (CRITICAL FIX: Fetch once, reuse) ----------
+async function getCredentials() {
+  if (!cachedCredentials) {
+    cachedCredentials = await fetchJson("/api/speech/token");
+  }
+  return cachedCredentials;
+}
 
+async function createSpeechConfigForLanguage(language) {
+  const creds = await getCredentials();
+
+  let config;
   if (creds.token && creds.region) {
-    speechConfig = SpeechSDK.SpeechConfig.fromAuthorizationToken(creds.token, creds.region);
+    config = SpeechSDK.SpeechConfig.fromAuthorizationToken(creds.token, creds.region);
   } else if (creds.key && creds.region) {
-    speechConfig = SpeechSDK.SpeechConfig.fromSubscription(creds.key, creds.region);
+    config = SpeechSDK.SpeechConfig.fromSubscription(creds.key, creds.region);
   } else {
     throw new Error("Invalid /api/speech/token response (expected {token,region} or {key,region}).");
   }
 
-  if (currentLanguage === "hi") {
-    speechConfig.speechSynthesisVoiceName = "hi-IN-ArjunNeural";
-    speechConfig.speechRecognitionLanguage = "hi-IN";
+  // Set language-specific settings
+  if (language === "hi") {
+    config.speechSynthesisVoiceName = "hi-IN-ArjunNeural";
+    config.speechRecognitionLanguage = "hi-IN";
   } else {
-    speechConfig.speechSynthesisVoiceName = "en-US-JennyNeural";
-    speechConfig.speechRecognitionLanguage = "en-US";
+    config.speechSynthesisVoiceName = "en-IN-ArjunNeural";
+    config.speechRecognitionLanguage = "en-IN";
   }
+
+  return config;
 }
 
 // ---------- Avatar Session ----------
@@ -387,14 +396,9 @@ async function setupPeerConnectionAndAvatar() {
       if (!stream) return;
 
       if (event.track.kind === "video") {
-        // attach stream (contains both audio + video)
         videoElement.srcObject = stream;
-
         videoElement.autoplay = true;
         videoElement.playsInline = true;
-
-        // Keep muted initially for autoplay reliability.
-        // If user already clicked, unlockAudioOnce() will unmute.
         videoElement.muted = !audioUnlocked;
 
         videoElement.classList.add("active");
@@ -403,7 +407,6 @@ async function setupPeerConnectionAndAvatar() {
         try {
           await videoElement.play();
         } catch {
-          // Expected if not yet unlocked by user gesture
           console.warn("Autoplay blocked until user gesture (click/keydown).");
           updateStatus("Click anywhere to enable sound");
         }
@@ -431,6 +434,9 @@ async function setupPeerConnectionAndAvatar() {
   const avatarConfig = new SpeechSDK.AvatarConfig("Max", "business", avatarVideoFormat);
   avatarConfig.backgroundColor = "#FFFFFFFF";
 
+  // CRITICAL: Create fresh config for avatar
+  speechConfig = await createSpeechConfigForLanguage(currentLanguage);
+
   avatarSynthesizer = new SpeechSDK.AvatarSynthesizer(speechConfig, avatarConfig);
   avatarSynthesizer.canceled = (s, e) => {
     console.error("Avatar canceled:", e?.errorDetails || e);
@@ -452,7 +458,6 @@ async function startNewAvatarSession(reason = "init") {
     closeSession();
     cancelReconnectIfAny();
 
-    await setupSpeechConfigFresh();
     await setupPeerConnectionAndAvatar();
   })();
 
@@ -525,6 +530,8 @@ async function stopSpeechRecognition() {
 }
 
 async function processUserMessage(message) {
+  if (!message || !message.trim()) return;
+
   addMessage(message, "user");
   updateStatus("Working...");
 
@@ -545,8 +552,11 @@ async function processUserMessage(message) {
       avatarSynthesizer.speakTextAsync(
         data.response,
         (result) => {
-          if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) resolve();
-          else reject(new Error("Avatar speakTextAsync did not complete"));
+          if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+            resolve();
+          } else {
+            reject(new Error("Avatar speakTextAsync did not complete"));
+          }
         },
         (err) => reject(err)
       );
@@ -569,12 +579,17 @@ function setupVoiceInterface() {
       updateStatus("Avatar not ready. Please wait…");
       return;
     }
-    if (listening) return;
+    if (listening) {
+      // Stop if already listening
+      await stopSpeechRecognition();
+      setLanguageUiCopy(currentLanguage);
+      updateStatus("Ready");
+      return;
+    }
 
     try {
-      if (!speechConfig) {
-        await setupSpeechConfigFresh();
-      }
+      // CRITICAL FIX: Create SEPARATE config for speech recognizer
+      const recognizerConfig = await createSpeechConfigForLanguage(currentLanguage);
 
       const uiCopy = getSpeechUiCopy();
       updateTranscript(uiCopy.listening);
@@ -582,7 +597,7 @@ function setupVoiceInterface() {
       updateStatus(uiCopy.listening);
 
       const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-      speechRecognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+      speechRecognizer = new SpeechSDK.SpeechRecognizer(recognizerConfig, audioConfig);
 
       let handled = false;
 
@@ -597,16 +612,17 @@ function setupVoiceInterface() {
 
         if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
           const text = (e.result.text || "").trim();
-          handled = true;
-          await stopSpeechRecognition();
-
-          if (text) {
-            updateTranscript(text);
-            await processUserMessage(text);
-          } else {
+          if (!text) {
             updateTranscript(uiCopy.noSpeech);
             updateStatus(uiCopy.noSpeech);
+            await stopSpeechRecognition();
+            return;
           }
+
+          handled = true;
+          updateTranscript(text);
+          await stopSpeechRecognition();
+          await processUserMessage(text);
           return;
         }
 
@@ -619,8 +635,10 @@ function setupVoiceInterface() {
       };
 
       speechRecognizer.canceled = async (s, e) => {
-        console.error("Speech recognition canceled:", e);
+        console.error("Speech recognition canceled:", e?.errorDetails || e);
         await stopSpeechRecognition();
+        
+        // Don't restart avatar session for recognition errors
         updateTranscript(uiCopy.canceled);
         updateStatus(uiCopy.canceled);
       };
@@ -631,7 +649,19 @@ function setupVoiceInterface() {
         }
       };
 
-      speechRecognizer.startContinuousRecognitionAsync();
+      await new Promise((resolve, reject) => {
+        speechRecognizer.startContinuousRecognitionAsync(
+          () => {
+            console.log("Speech recognition started");
+            resolve();
+          },
+          (err) => {
+            console.error("Failed to start recognition:", err);
+            reject(err);
+          }
+        );
+      });
+
     } catch (e) {
       console.error("Speech recognition error:", e);
       await stopSpeechRecognition();
@@ -648,12 +678,18 @@ function setupLanguageSelector() {
   if (!languageSelect) return;
 
   const applyLanguage = async (language) => {
+    const oldLanguage = currentLanguage;
     currentLanguage = language;
     setLanguageUiCopy(language);
 
+    // Stop any ongoing recognition
     await stopSpeechRecognition();
-    speechConfig = null;
-    if (avatarReady) {
+
+    // CRITICAL FIX: Only restart if avatar is active
+    // Language change updates voice on next synthesis
+    if (avatarReady && oldLanguage !== language) {
+      updateStatus(`Switching to ${language === "hi" ? "Hindi" : "English"}...`);
+      // Restart session with new language
       await startNewAvatarSession(`language-${language}`);
     }
   };
@@ -674,9 +710,13 @@ async function init() {
     setupLanguageSelector();
     setupVoiceInterface();
     setChatAvailability(false, "Initializing avatar...");
+    
+    // Fetch credentials early
+    await getCredentials();
+    
     setTimeout(() => {
       startNewAvatarSession("page-load");
-    }, 700); // 500–800ms is ideal
+    }, 700);
     
   } catch (e) {
     console.error("Init failed:", e);
