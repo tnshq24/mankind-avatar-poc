@@ -5,13 +5,13 @@ const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, language } = req.body;
     
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    const response = await getChatResponse(message);
+    const response = await getChatResponse(message, language);
     res.json({ response });
   } catch (error) {
     console.error('Error in chat route:', error);
