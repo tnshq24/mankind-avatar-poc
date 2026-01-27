@@ -19,17 +19,21 @@ function getClient() {
   return client;
 }
 
-export async function getChatResponse(message) {
+export async function getChatResponse(message, language = 'en') {
   try {
     const client = getClient();
     const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4';
+    const normalizedLanguage = language === 'hi' ? 'hi' : 'en';
+    const systemPrompt = normalizedLanguage === 'hi'
+      ? 'You are a helpful, concise assistant. Respond only in Hindi using Devanagari script.'
+      : 'You are a helpful, concise English-speaking assistant. Respond only in English.';
     
     const response = await client.getChatCompletions(
       deploymentName,
       [
         {
           role: 'system',
-          content: 'You are a helpful, concise Hindi-speaking assistant.'
+          content: systemPrompt
         },
         {
           role: 'user',

@@ -25,13 +25,19 @@
         <div id="chat-messages" class="chat-messages"></div>
         
         <div class="chat-input-container">
-          <input 
-            type="text" 
-            id="user-input" 
-            placeholder="Type your question..."
-            autocomplete="off"
-          />
-          <button id="send-button">Send</button>
+          <label class="language-select" for="language-select">
+            <span>Language</span>
+            <select id="language-select" name="language">
+              <option value="en" selected>English</option>
+              <option value="hi">Hindi</option>
+            </select>
+          </label>
+          <button id="mic-button" class="mic-button" type="button">
+            Start speaking
+          </button>
+          <div id="speech-transcript" class="speech-transcript" aria-live="polite">
+            Tap the button and ask your question aloud.
+          </div>
         </div>
       </div>
     </div>

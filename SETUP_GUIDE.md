@@ -91,10 +91,9 @@ Server running at http://localhost:3000
 
 ### Step 5: Test the Application
 
-1. Type a message in the input field (e.g., "Hello, how are you?")
-2. Click "Send" or press Enter
-3. Wait for the response from Azure OpenAI (text shows in chat pane)
-4. The avatar video + audio stream should play almost instantly via WebRTC
+1. Click the "Start speaking" button and ask a question aloud (e.g., "Hello, how are you?")
+2. Wait for the response from Azure OpenAI (text shows in chat pane)
+3. The avatar video + audio stream should play almost instantly via WebRTC
 
 ### Step 6: (Optional) Inspect realtime avatar connection
 
