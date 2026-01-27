@@ -356,8 +356,8 @@ async function createSpeechConfigForLanguage(language) {
     config.speechSynthesisVoiceName = "hi-IN-ArjunNeural";
     config.speechRecognitionLanguage = "hi-IN";
   } else {
-    config.speechSynthesisVoiceName = "en-US-JennyNeural";
-    config.speechRecognitionLanguage = "en-US";
+    config.speechSynthesisVoiceName = "en-IN-ArjunNeural";
+    config.speechRecognitionLanguage = "en-IN";
   }
 
   return config;
