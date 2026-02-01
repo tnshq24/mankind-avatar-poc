@@ -7,6 +7,7 @@
  * - Language switching without full session restart
  * - Better error isolation between avatar and recognition
  * - Microphone permission handling
+ * - UPDATED: Custom avatar model 'model-anisha'
  ****************************************************/
 
 const SpeechSDK = window.SpeechSDK;
@@ -351,13 +352,16 @@ async function createSpeechConfigForLanguage(language) {
     throw new Error("Invalid /api/speech/token response (expected {token,region} or {key,region}).");
   }
 
-  // Set language-specific settings
+  // NOTE: For real-time avatar WebRTC, voice config is set via speechSynthesisVoiceName
+  // This is different from batch avatar API which uses synthesisConfig.voice in REST payload
+  // IMPORTANT: You MUST use valid Azure Neural TTS voice names here
+  // "Voice sync for avatar" only works in batch API, not real-time WebRTC SDK
+  
+  // Choose voice based on language
   if (language === "hi") {
-    config.speechSynthesisVoiceName = "hi-IN-ArjunNeural";
-    config.speechRecognitionLanguage = "hi-IN";
+    config.speechSynthesisVoiceName = "hi-IN-KavyaNeural"; // Hindi neural voice
   } else {
-    config.speechSynthesisVoiceName = "en-IN-ArjunNeural";
-    config.speechRecognitionLanguage = "en-IN";
+    config.speechSynthesisVoiceName = "en-IN-KavyaNeural"; // English neural voice
   }
 
   return config;
@@ -425,13 +429,16 @@ async function setupPeerConnectionAndAvatar() {
   peerConnection.addTransceiver("video", { direction: "sendrecv" });
   peerConnection.addTransceiver("audio", { direction: "sendrecv" });
 
-  // Avatar configuration
+  // Avatar configuration - UPDATED FOR CUSTOM AVATAR
   const avatarVideoFormat = new SpeechSDK.AvatarVideoFormat();
   if (SpeechSDK.AvatarVideoCodec?.H264) {
     avatarVideoFormat.videoCodec = SpeechSDK.AvatarVideoCodec.H264;
   }
 
-  const avatarConfig = new SpeechSDK.AvatarConfig("Max", "business", avatarVideoFormat);
+  // Custom avatar configuration for 'model-anisha'
+  // CRITICAL: Pass null for style parameter (2nd param) for custom avatars
+  const avatarConfig = new SpeechSDK.AvatarConfig("model-anisha", null, avatarVideoFormat);
+  avatarConfig.customized = true; // Set to true for custom avatar
   avatarConfig.backgroundColor = "#FFFFFFFF";
 
   // CRITICAL: Create fresh config for avatar
@@ -589,7 +596,19 @@ function setupVoiceInterface() {
 
     try {
       // CRITICAL FIX: Create SEPARATE config for speech recognizer
-      const recognizerConfig = await createSpeechConfigForLanguage(currentLanguage);
+      const creds = await getCredentials();
+      
+      let recognizerConfig;
+      if (creds.token && creds.region) {
+        recognizerConfig = SpeechSDK.SpeechConfig.fromAuthorizationToken(creds.token, creds.region);
+      } else if (creds.key && creds.region) {
+        recognizerConfig = SpeechSDK.SpeechConfig.fromSubscription(creds.key, creds.region);
+      } else {
+        throw new Error("Invalid credentials for speech recognizer");
+      }
+      
+      // Set speech recognition language
+      recognizerConfig.speechRecognitionLanguage = currentLanguage === "hi" ? "hi-IN" : "en-IN";
 
       const uiCopy = getSpeechUiCopy();
       updateTranscript(uiCopy.listening);
