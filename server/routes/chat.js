@@ -6,7 +6,7 @@ const router = express.Router();
 // router.post('/', async (req, res) => {
 //   try {
 //     const { message, language } = req.body;
-    
+
 //     if (!message) {
 //       return res.status(400).json({ error: 'Message is required' });
 //     }
@@ -21,7 +21,15 @@ const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { question, session_id, token } = req.body;
+    const { question, session_id } = req.body;
+
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : null;
+
+      console.log('=== DEBUG Chat Route ===' , { question, session_id, token: token ? '***REDACTED***' : null });
+    
 
     console.log('Received chat request:', { question, session_id, token });
     if (!question || !session_id || !token) {
@@ -29,14 +37,17 @@ router.post('/', async (req, res) => {
         error: 'question, session_id and token are required'
       });
     }
-
+    //Pyhton backend url
     const response = await fetch(
-      'https://avatar-chatbot-backend-e0d2cvhtd7aabycp.centralindia-01.azurewebsites.net/chat',
+      'https://gstreportchatbotbackend-awctfkedhuhchkgw.centralindia-01.azurewebsites.net/api/v1/chat',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          question,
+          message: question,
           session_id,
           token
         })
