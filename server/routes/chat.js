@@ -6,7 +6,7 @@ const router = express.Router();
 // router.post('/', async (req, res) => {
 //   try {
 //     const { message, language } = req.body;
-    
+
 //     if (!message) {
 //       return res.status(400).json({ error: 'Message is required' });
 //     }
@@ -21,9 +21,9 @@ const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { question, session_id, token } = req.body;
+    const { question, session_id, token, rca_flag } = req.body;
 
-    console.log('Received chat request:', { question, session_id, token });
+    console.log('Received chat request:', { question, session_id, token, rca_flag });
     if (!question || !session_id || !token) {
       return res.status(400).json({
         error: 'question, session_id and token are required'
@@ -38,7 +38,8 @@ router.post('/', async (req, res) => {
         body: JSON.stringify({
           question,
           session_id,
-          token
+          token,
+          rca_flag: rca_flag || false
         })
       }
     );
